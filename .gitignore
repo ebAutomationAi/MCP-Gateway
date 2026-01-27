@@ -1,0 +1,10 @@
+# --- SEGURIDAD (CRÍTICO) ---
+.env
+.env.local
+.DS_Store
+
+# --- Dependencias y Logs ---
+node_modules/
+npm-debug.log
+*.log
+dist/

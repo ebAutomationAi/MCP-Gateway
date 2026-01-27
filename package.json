@@ -1,0 +1,21 @@
+{
+  "name": "mcp-github-http-bridge",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "HTTP/SSE wrapper for MCP GitHub Server",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.1",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/server-github": "^0.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
