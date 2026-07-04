@@ -1,4 +1,4 @@
-# MCP GitHub HTTP Bridge 🌉
+# MCP-Gateway 🌉 — HTTP/SSE Bridge para servidores MCP locales
 
 Wrapper HTTP/SSE para el servidor MCP GitHub, permitiendo acceso vía HTTP a las capacidades del Model Context Protocol para GitHub.
 
