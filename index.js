@@ -8,6 +8,28 @@ app.use(express.json());
 // Mapa de sesiones activas
 const sessions = new Map();
 
+// Middleware de autenticación Bearer token
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  const apiToken = process.env.API_TOKEN;
+
+  if (!apiToken) {
+    console.warn('⚠️  API_TOKEN not set — auth disabled for development');
+    return next();
+  }
+
+  if (!token) {
+    return res.status(401).json({ error: 'Missing authorization token' });
+  }
+
+  if (token !== apiToken) {
+    return res.status(403).json({ error: 'Invalid token' });
+  }
+
+  next();
+};
+
 // Health check endpoint
 app.get("/health", (req, res) => {
   res.json({ 
@@ -18,7 +40,7 @@ app.get("/health", (req, res) => {
 });
 
 // Endpoint SSE para establecer conexión con MCP
-app.get("/sse", async (req, res) => {
+app.get("/sse", authenticateToken, async (req, res) => {
   const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   console.log(`🔌 Nueva conexión SSE: ${sessionId}`);
 
@@ -115,7 +137,7 @@ app.get("/sse", async (req, res) => {
 });
 
 // Endpoint POST para enviar mensajes al servidor MCP
-app.post("/messages", async (req, res) => {
+app.post("/messages", authenticateToken, async (req, res) => {
   const sessionId = req.headers["x-session-id"];
   
   if (!sessionId) {
@@ -154,7 +176,7 @@ app.post("/messages", async (req, res) => {
 });
 
 // Endpoint para listar sesiones activas (útil para debug)
-app.get("/sessions", (req, res) => {
+app.get("/sessions", authenticateToken, (req, res) => {
   const sessionList = Array.from(sessions.entries()).map(([id, session]) => ({
     sessionId: id,
     pid: session.process.pid,

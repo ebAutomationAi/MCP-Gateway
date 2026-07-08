@@ -237,8 +237,23 @@ El servidor incluye emojis y prefijos para facilitar el debugging:
 
 - **No expongas** tu `GITHUB_TOKEN` en logs o código
 - Usa Ngrok solo para desarrollo/testing
-- Para producción, implementa autenticación en los endpoints
+- Define `API_TOKEN` en producción para activar la autenticación de los endpoints (ver abajo)
 - Limita las sesiones simultáneas si es necesario
+
+### Autenticación
+
+Los endpoints `/sse`, `/messages` y `/sessions` requieren un Bearer token en el header `Authorization`:
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_TOKEN" http://localhost:3001/messages
+```
+
+Genera un token seguro:
+```bash
+openssl rand -hex 32
+```
+
+Nota: Si `API_TOKEN` no está definida en `.env`, la autenticación está deshabilitada (modo desarrollo).
 
 ## 🤝 Contribuir
 
