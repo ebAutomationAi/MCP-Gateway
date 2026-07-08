@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import { spawn } from "child_process";
 
 const app = express();
@@ -30,6 +31,27 @@ const authenticateToken = (req, res, next) => {
   next();
 };
 
+const corsOptions = {
+  origin: (origin, callback) => {
+    const allowedOrigins = [
+      'http://localhost:3001',
+      'http://localhost:3000',
+      'https://ebautomationai.github.io'
+    ];
+
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
+
 // Health check endpoint
 app.get("/health", (req, res) => {
   res.json({ 
@@ -49,7 +71,6 @@ app.get("/sse", authenticateToken, async (req, res) => {
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
-  res.setHeader("Access-Control-Allow-Origin", "*");
 
   // Enviar el session ID al cliente
   res.write(`event: session\ndata: ${JSON.stringify({ sessionId })}\n\n`);

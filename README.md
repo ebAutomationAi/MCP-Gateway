@@ -255,6 +255,15 @@ openssl rand -hex 32
 
 Nota: Si `API_TOKEN` no está definida en `.env`, la autenticación está deshabilitada (modo desarrollo).
 
+### CORS
+
+Los endpoints están protegidos contra orígenes no autorizados. Orígenes permitidos:
+- `http://localhost:3001` (desarrollo local)
+- `http://localhost:3000` (frontend local alternativo)
+- `https://ebautomationai.github.io` (GitHub Pages)
+
+Cualquier otro origen recibirá un error CORS. Para agregar más orígenes en desarrollo, modifica `corsOptions.allowedOrigins` en `index.js`.
+
 ## 🤝 Contribuir
 
 Si encuentras bugs o mejoras, crea un issue o pull request.
