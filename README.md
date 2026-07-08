@@ -264,6 +264,19 @@ Los endpoints están protegidos contra orígenes no autorizados. Orígenes permi
 
 Cualquier otro origen recibirá un error CORS. Para agregar más orígenes en desarrollo, modifica `corsOptions.allowedOrigins` en `index.js`.
 
+### Pruebas
+
+Ejecutar tests:
+```bash
+npm test           # Una vez
+npm run test:watch # En modo vigilancia
+npm run test:coverage # Con reporte de cobertura
+```
+
+Tests cubren:
+- Autenticación: tokens válidos, faltantes e inválidos
+- CORS: orígenes permitidos y bloqueados
+
 ## 🤝 Contribuir
 
 Si encuentras bugs o mejoras, crea un issue o pull request.
