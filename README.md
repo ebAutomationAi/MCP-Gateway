@@ -1,6 +1,6 @@
-# MCP-Gateway 🌉 — HTTP/SSE Bridge para servidores MCP locales
+# MCP-Gateway — Generic HTTP/SSE Bridge for MCP Servers
 
-Wrapper HTTP/SSE para el servidor MCP GitHub, permitiendo acceso vía HTTP a las capacidades del Model Context Protocol para GitHub.
+Wrapper HTTP/SSE genérico para servidores MCP (Model Context Protocol), que permite acceso vía HTTP a las capacidades de cualquier servidor MCP compatible con stdio — no solo GitHub.
 
 ## 🏗️ Arquitectura
 
@@ -9,15 +9,17 @@ Cliente HTTP/SSE
     ↓
 Express Server (puerto 3001)
     ↓
-Proceso MCP GitHub (stdio)
+Proceso MCP (stdio) — spawn(MCP_COMMAND, MCP_ARGS)
     ↓
-GitHub API
+Servidor MCP objetivo (GitHub, Filesystem, etc.)
 ```
+
+El proceso MCP concreto que se lanza depende únicamente de las variables de entorno `MCP_COMMAND` y `MCP_ARGS` — el gateway no conoce ni depende de ningún servidor MCP en particular.
 
 ## 📋 Requisitos
 
 - Docker y Docker Compose
-- Token de GitHub con permisos: `repo`, `read:org`, `read:user`
+- Las credenciales que requiera el servidor MCP que quieras usar (p. ej. un token de GitHub, una ruta de filesystem, etc.)
 - Token de Ngrok (para exposición pública)
 
 ## 🚀 Instalación
@@ -34,7 +36,7 @@ GitHub API
 2. **Configurar variables de entorno:**
    ```bash
    cp .env.example .env
-   # Edita .env y añade tus tokens
+   # Edita .env y define MCP_COMMAND / MCP_ARGS y demás credenciales
    ```
 
 3. **Construir y ejecutar:**
@@ -48,6 +50,36 @@ GitHub API
    docker logs mcp-github-audit
    curl http://localhost:3001/health
    ```
+
+## ⚙️ Configuración
+
+El servidor MCP a ejecutar se configura con dos variables de entorno:
+
+- `MCP_COMMAND`: el ejecutable a lanzar (por defecto `npx`).
+- `MCP_ARGS`: los argumentos, separados por espacios, que se pasan a ese ejecutable.
+
+Cualquier otra variable de entorno necesaria para el servidor MCP elegido (tokens, rutas, etc.) se define también en `.env` y se propaga automáticamente al proceso hijo vía `...process.env`.
+
+### Ejemplo — GitHub MCP server
+
+```env
+MCP_COMMAND=npx
+MCP_ARGS=-y @modelcontextprotocol/server-github
+GITHUB_PERSONAL_ACCESS_TOKEN=your_github_pat_here
+```
+
+### Ejemplo — Filesystem MCP server
+
+```env
+MCP_COMMAND=npx
+MCP_ARGS=-y @modelcontextprotocol/server-filesystem /path/to/dir
+```
+
+Para usar cualquier otro servidor MCP compatible con stdio, basta con cambiar `MCP_COMMAND`/`MCP_ARGS` (y las credenciales que ese servidor necesite) — no hace falta tocar el código del gateway.
+
+## ❓ Why generic?
+
+El diseño anterior dependía de forma rígida de `@modelcontextprotocol/server-github`, un paquete concreto que puede quedar deprecado, dejar de recibir parches de seguridad o simplemente no ser el servidor que necesitas. Con `MCP_COMMAND`/`MCP_ARGS` el gateway se limita a hacer de puente HTTP/SSE ↔ stdio: puedes intercambiar el servidor MCP subyacente (GitHub, Filesystem, o cualquier otro) sin tocar `index.js`, sin reconstruir la imagen con un paquete distinto instalado globalmente y sin arrastrar dependencias de servidores MCP concretos en `package.json`.
 
 ## 🔌 Endpoints
 
@@ -64,7 +96,7 @@ Health check del servidor.
 ```
 
 ### `GET /sse`
-Establece una conexión SSE y crea una sesión MCP.
+Establece una conexión SSE y crea una sesión MCP, lanzando el proceso configurado en `MCP_COMMAND`/`MCP_ARGS`.
 
 **Respuesta:**
 - Header: `Content-Type: text/event-stream`
@@ -160,7 +192,7 @@ La URL pública tendrá el formato: `https://xxxx-xx-xx-xx-xx.ngrok-free.app`
 curl -N http://localhost:3001/sse &
 # Captura el sessionId del primer evento
 
-# 2. Enviar comando para listar repos
+# 2. Enviar un mensaje al servidor MCP configurado
 curl -X POST http://localhost:3001/messages \
   -H "x-session-id: session-xxx" \
   -H "Content-Type: application/json" \
@@ -203,9 +235,9 @@ docker-compose build --no-cache
 docker-compose up -d
 ```
 
-## 🛠️ Herramientas MCP GitHub Disponibles
+## 🛠️ Herramientas MCP Disponibles
 
-El servidor MCP GitHub expone las siguientes herramientas:
+Las herramientas disponibles dependen del servidor MCP configurado en `MCP_ARGS`. Por ejemplo, el servidor MCP de GitHub expone herramientas como:
 
 - `create_or_update_file` - Crear o actualizar archivos
 - `search_repositories` - Buscar repositorios
@@ -217,7 +249,9 @@ El servidor MCP GitHub expone las siguientes herramientas:
 - `fork_repository` - Hacer fork de repos
 - `create_branch` - Crear ramas
 
-Para más detalles, consulta: https://github.com/modelcontextprotocol/servers/tree/main/src/github
+Mientras que el servidor MCP de Filesystem expone herramientas para leer/escribir archivos locales dentro del directorio configurado.
+
+Para más detalles sobre cada servidor, consulta: https://github.com/modelcontextprotocol/servers
 
 ## 📊 Monitoreo
 
@@ -235,14 +269,14 @@ El servidor incluye emojis y prefijos para facilitar el debugging:
 
 ## 🔒 Seguridad
 
-- **No expongas** tu `GITHUB_TOKEN` en logs o código
+- **No expongas** tus tokens/credenciales del servidor MCP en logs o código
 - Usa Ngrok solo para desarrollo/testing
 - Define `API_TOKEN` en producción para activar la autenticación de los endpoints (ver abajo)
 - Limita las sesiones simultáneas si es necesario
 
 ### Autenticación
 
-Los endpoints `/sse`, `/messages` y `/sessions` requieren un Bearer token en el header `Authorization`:
+Los endpoints `/sse`, `/messages`, `/sessions` y `DELETE /sessions/:sessionId` requieren un Bearer token en el header `Authorization`:
 
 ```bash
 curl -H "Authorization: Bearer YOUR_API_TOKEN" http://localhost:3001/messages

@@ -4,7 +4,9 @@ services:
     build: .
     container_name: mcp-github-audit
     environment:
-      - GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_TOKEN}
+      - MCP_COMMAND=${MCP_COMMAND:-npx}
+      - MCP_ARGS=${MCP_ARGS}
+      - API_TOKEN=${API_TOKEN}
       - PORT=3001
     ports:
       - "3001:3001"

@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { spawn } from "child_process";
+import { randomUUID } from "crypto";
 
 const app = express();
 
@@ -63,7 +64,7 @@ app.get("/health", (req, res) => {
 
 // Endpoint SSE para establecer conexión con MCP
 app.get("/sse", authenticateToken, async (req, res) => {
-  const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const sessionId = `session-${Date.now()}-${randomUUID().replace(/-/g, '').slice(0, 9)}`;
   console.log(`🔌 Nueva conexión SSE: ${sessionId}`);
 
   // Configurar headers SSE
@@ -75,12 +76,15 @@ app.get("/sse", authenticateToken, async (req, res) => {
   // Enviar el session ID al cliente
   res.write(`event: session\ndata: ${JSON.stringify({ sessionId })}\n\n`);
 
-  // Spawn del proceso MCP GitHub
-  const mcpProcess = spawn("npx", ["@modelcontextprotocol/server-github"], {
-    env: {
-      ...process.env,
-      GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_PERSONAL_ACCESS_TOKEN
-    },
+  // Spawn del proceso MCP genérico, configurado vía MCP_COMMAND / MCP_ARGS
+  const mcpCommand = process.env.MCP_COMMAND || "npx";
+  const mcpArgs = (process.env.MCP_ARGS || "").split(" ").filter(a => a.length > 0);
+  if (mcpArgs.length === 0) {
+    console.error("❌ MCP_ARGS not set — cannot start MCP process");
+    return res.status(500).json({ error: "MCP_ARGS environment variable is required" });
+  }
+  const mcpProcess = spawn(mcpCommand, mcpArgs, {
+    env: { ...process.env },
     stdio: ["pipe", "pipe", "pipe"]
   });
 
@@ -212,7 +216,7 @@ app.get("/sessions", authenticateToken, (req, res) => {
 });
 
 // Endpoint para cerrar una sesión específica
-app.delete("/sessions/:sessionId", (req, res) => {
+app.delete("/sessions/:sessionId", authenticateToken, (req, res) => {
   const sessionId = req.params.sessionId;
   const session = sessions.get(sessionId);
   
@@ -258,4 +262,5 @@ app.listen(PORT, () => {
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🔌 SSE endpoint: http://localhost:${PORT}/sse`);
   console.log(`📨 Messages endpoint: POST http://localhost:${PORT}/messages`);
+  console.log(`⚙️  MCP command: ${process.env.MCP_COMMAND || "npx"} ${process.env.MCP_ARGS || "(MCP_ARGS not set)"}`);
 });

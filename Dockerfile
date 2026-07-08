@@ -9,10 +9,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Instalar dependencias del proyecto
-RUN npm install
-
-# Instalar el servidor MCP GitHub globalmente
-RUN npm install -g @modelcontextprotocol/server-github
+RUN npm ci --omit=dev
 
 # Copiar el código del wrapper
 COPY index.js .
