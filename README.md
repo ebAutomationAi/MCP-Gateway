@@ -277,6 +277,15 @@ Tests cubren:
 - Autenticación: tokens válidos, faltantes e inválidos
 - CORS: orígenes permitidos y bloqueados
 
+### CI/CD
+
+Cada push a `main` o pull request ejecuta automáticamente:
+- Tests en Node.js 18.x, 20.x, 22.x (GitHub Actions)
+- Reporte de cobertura
+- Verificación de sintaxis
+
+Ver estado en: https://github.com/ebAutomationAi/MCP-Gateway/actions
+
 ## 🤝 Contribuir
 
 Si encuentras bugs o mejoras, crea un issue o pull request.
