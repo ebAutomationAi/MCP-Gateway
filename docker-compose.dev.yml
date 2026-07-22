@@ -1,0 +1,21 @@
+# Development only — exposes the gateway publicly via ngrok tunnel.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+services:
+  ngrok-mcp:
+    image: ngrok/ngrok:3
+    container_name: ngrok-mcp-audit
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    command: ["http", "mcp-github:3001"]
+    ports:
+      - "4040:4040"
+    networks:
+      - audit-net
+    depends_on:
+      mcp-github:
+        condition: service_healthy
+    restart: "no"
+
+networks:
+  audit-net:
+    external: true

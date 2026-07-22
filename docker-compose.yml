@@ -1,5 +1,4 @@
 services:
-  # 1. Servidor MCP GitHub con wrapper HTTP
   mcp-github:
     build: .
     container_name: mcp-github-audit
@@ -7,6 +6,7 @@ services:
       - MCP_COMMAND=${MCP_COMMAND:-npx}
       - MCP_ARGS=${MCP_ARGS}
       - API_TOKEN=${API_TOKEN}
+      - CORS_ORIGINS=${CORS_ORIGINS}
       - PORT=3001
     ports:
       - "3001:3001"
@@ -19,22 +19,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-
-  # 2. Túnel Ngrok (expone el servicio a internet)
-  ngrok-mcp:
-    image: ngrok/ngrok:latest
-    container_name: ngrok-mcp-audit
-    environment:
-      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
-    command: ["http", "mcp-github:3001"]
-    ports:
-      - "4040:4040"  # Interfaz web de inspección de ngrok
-    networks:
-      - audit-net
-    depends_on:
-      mcp-github:
-        condition: service_healthy
-    restart: unless-stopped
 
 networks:
   audit-net:
