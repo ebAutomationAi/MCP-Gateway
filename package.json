@@ -1,5 +1,5 @@
 {
-  "name": "mcp-github-http-bridge",
+  "name": "mcp-gateway",
   "version": "1.0.0",
   "type": "module",
   "description": "HTTP/SSE wrapper for MCP GitHub Server",
@@ -12,7 +12,6 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.1",
     "cors": "^2.8.5",
     "express": "^4.21.0"
   },
