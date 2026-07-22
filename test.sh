@@ -1,94 +1,63 @@
 #!/bin/bash
-
-# Script de testing para MCP GitHub HTTP Bridge
-# Uso: ./test.sh
+# test.sh — Generic smoke test for MCP-Gateway
+# Tests health check, SSE connection, and tools/list via JSON-RPC.
+# Works with any MCP server configured in MCP_ARGS.
 
 set -e
 
-echo "🧪 Testing MCP GitHub HTTP Bridge"
-echo "=================================="
-echo ""
+BASE_URL="${BASE_URL:-http://localhost:3001}"
+API_TOKEN="${API_TOKEN:-}"
+TIMEOUT=10
 
-# Colores
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-BASE_URL="http://localhost:3001"
-
-# Test 1: Health Check
-echo "📊 Test 1: Health Check"
-HEALTH_RESPONSE=$(curl -s ${BASE_URL}/health)
-if echo "$HEALTH_RESPONSE" | grep -q "ok"; then
-    echo -e "${GREEN}✅ Health check passed${NC}"
-    echo "   Response: $HEALTH_RESPONSE"
-else
-    echo -e "${RED}❌ Health check failed${NC}"
-    exit 1
+AUTH_HEADER=""
+if [ -n "$API_TOKEN" ]; then
+  AUTH_HEADER="Authorization: Bearer $API_TOKEN"
 fi
+
+echo "🔍 Testing MCP-Gateway at $BASE_URL"
 echo ""
 
-# Test 2: Sessions endpoint
-echo "📋 Test 2: Sessions List"
-SESSIONS_RESPONSE=$(curl -s ${BASE_URL}/sessions)
-echo -e "${GREEN}✅ Sessions endpoint accessible${NC}"
-echo "   Response: $SESSIONS_RESPONSE"
+# 1. Health check
+echo "1/3 Health check..."
+HEALTH=$(curl -sf --max-time "$TIMEOUT" "$BASE_URL/health")
+echo "    ✅ $HEALTH"
 echo ""
 
-# Test 3: SSE Connection (background)
-echo "🔌 Test 3: SSE Connection"
-echo -e "${YELLOW}⏳ Iniciando conexión SSE en background...${NC}"
-
-# Iniciar SSE en background y guardar output
-SSE_OUTPUT=$(mktemp)
-curl -s -N ${BASE_URL}/sse > "$SSE_OUTPUT" 2>&1 &
-SSE_PID=$!
-
-# Esperar un poco para que se establezca la conexión
-sleep 3
-
-# Verificar que el proceso sigue corriendo
-if ps -p $SSE_PID > /dev/null; then
-    echo -e "${GREEN}✅ Conexión SSE establecida (PID: $SSE_PID)${NC}"
-    
-    # Intentar extraer el session ID
-    sleep 2
-    if [ -f "$SSE_OUTPUT" ]; then
-        echo "   Primeros datos recibidos:"
-        head -n 5 "$SSE_OUTPUT" | sed 's/^/   /'
-    fi
+# 2. SSE connection — capture sessionId
+echo "2/3 SSE connection..."
+if [ -n "$AUTH_HEADER" ]; then
+  SSE_RESPONSE=$(curl -sf --max-time "$TIMEOUT" -N \
+    -H "$AUTH_HEADER" \
+    "$BASE_URL/sse" 2>/dev/null | head -n 4 || true)
 else
-    echo -e "${RED}❌ Conexión SSE falló${NC}"
-    rm -f "$SSE_OUTPUT"
-    exit 1
+  SSE_RESPONSE=$(curl -sf --max-time "$TIMEOUT" -N \
+    "$BASE_URL/sse" 2>/dev/null | head -n 4 || true)
 fi
+
+SESSION_ID=$(echo "$SSE_RESPONSE" | grep '"sessionId"' | sed 's/.*"sessionId":"\([^"]*\)".*/\1/')
+
+if [ -z "$SESSION_ID" ]; then
+  echo "    ❌ Could not obtain sessionId. Is the gateway running with valid MCP_ARGS?"
+  exit 1
+fi
+echo "    ✅ sessionId: $SESSION_ID"
 echo ""
 
-# Test 4: Verificar sesiones activas
-echo "🔍 Test 4: Verificar Sesiones Activas"
-sleep 2
-ACTIVE_SESSIONS=$(curl -s ${BASE_URL}/sessions)
-SESSION_COUNT=$(echo "$ACTIVE_SESSIONS" | grep -o '"count":[0-9]*' | grep -o '[0-9]*')
-
-if [ "$SESSION_COUNT" -gt 0 ]; then
-    echo -e "${GREEN}✅ Hay $SESSION_COUNT sesión(es) activa(s)${NC}"
-    echo "   Detalles: $ACTIVE_SESSIONS"
+# 3. Send tools/list — response arrives on SSE stream, POST just confirms delivery
+echo "3/3 Sending tools/list..."
+if [ -n "$AUTH_HEADER" ]; then
+  SEND=$(curl -sf --max-time "$TIMEOUT" -X POST "$BASE_URL/messages" \
+    -H "$AUTH_HEADER" \
+    -H "x-session-id: $SESSION_ID" \
+    -H "Content-Type: application/json" \
+    -d '{"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}')
 else
-    echo -e "${RED}❌ No hay sesiones activas${NC}"
+  SEND=$(curl -sf --max-time "$TIMEOUT" -X POST "$BASE_URL/messages" \
+    -H "x-session-id: $SESSION_ID" \
+    -H "Content-Type: application/json" \
+    -d '{"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}')
 fi
+echo "    ✅ $SEND"
 echo ""
 
-# Cleanup
-echo "🧹 Limpiando..."
-kill $SSE_PID 2>/dev/null || true
-rm -f "$SSE_OUTPUT"
-
-echo ""
-echo "=================================="
-echo -e "${GREEN}✅ Todos los tests completados${NC}"
-echo ""
-echo "💡 Para testing interactivo:"
-echo "   1. Abre http://localhost:4040 para ver el túnel Ngrok"
-echo "   2. Usa 'curl -N http://localhost:3001/sse' para conectar por SSE"
-echo "   3. Revisa los logs: docker-compose logs -f mcp-github"
+echo "✅ All checks passed."
