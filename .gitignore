@@ -9,3 +9,5 @@ npm-debug.log
 *.log
 dist/
 coverage/
+graphify-out/
+MCP_GATEWAY_README_AND_LOG.md
