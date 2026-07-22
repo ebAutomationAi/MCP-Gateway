@@ -1,329 +1,198 @@
-# MCP-Gateway — Generic HTTP/SSE Bridge for MCP Servers
+# MCP-Gateway
 
-Wrapper HTTP/SSE genérico para servidores MCP (Model Context Protocol), que permite acceso vía HTTP a las capacidades de cualquier servidor MCP compatible con stdio — no solo GitHub.
+Generic HTTP/SSE bridge that exposes any stdio-based MCP server over HTTP.
+Configure which MCP server to run via environment variables — no code changes required.
 
-## 🏗️ Arquitectura
+[![Tests](https://github.com/ebAutomationAi/MCP-Gateway/actions/workflows/test.yml/badge.svg)](https://github.com/ebAutomationAi/MCP-Gateway/actions/workflows/test.yml)
+[![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+## Architecture
 
 ```
-Cliente HTTP/SSE
-    ↓
-Express Server (puerto 3001)
-    ↓
-Proceso MCP (stdio) — spawn(MCP_COMMAND, MCP_ARGS)
-    ↓
-Servidor MCP objetivo (GitHub, Filesystem, etc.)
+HTTP/SSE client
+      ↓
+Express server (port 3001)
+      ↓
+spawn(MCP_COMMAND, MCP_ARGS)   ← stdio bridge
+      ↓
+Any MCP-compatible server (GitHub, Filesystem, …)
 ```
 
-El proceso MCP concreto que se lanza depende únicamente de las variables de entorno `MCP_COMMAND` y `MCP_ARGS` — el gateway no conoce ni depende de ningún servidor MCP en particular.
 
-## 📋 Requisitos
+The gateway does not know or depend on any specific MCP server.
+Swap `MCP_COMMAND`/`MCP_ARGS` to point at a different server — nothing else changes.
 
-- Docker y Docker Compose
-- Las credenciales que requiera el servidor MCP que quieras usar (p. ej. un token de GitHub, una ruta de filesystem, etc.)
-- Token de Ngrok (para exposición pública)
+## Requirements
 
-## 🚀 Instalación
+- Docker and Docker Compose
+- Credentials required by the MCP server you want to expose (e.g. a GitHub PAT)
 
-1. **Clonar o copiar los archivos:**
-   ```bash
-   # Asegúrate de tener estos archivos:
-   # - index.js
-   # - Dockerfile
-   # - docker-compose.yml
-   # - package.json
-   ```
+## Quick start
 
-2. **Configurar variables de entorno:**
-   ```bash
-   cp .env.example .env
-   # Edita .env y define MCP_COMMAND / MCP_ARGS y demás credenciales
-   ```
+```bash
+git clone https://github.com/ebAutomationAi/MCP-Gateway.git
+cd MCP-Gateway
+cp .env.example .env
+# Edit .env: set MCP_COMMAND, MCP_ARGS, API_TOKEN, and any server-specific credentials
+docker compose up -d
+curl http://localhost:3001/health
+```
 
-3. **Construir y ejecutar:**
-   ```bash
-   docker-compose build
-   docker-compose up -d
-   ```
+## Configuration
 
-4. **Verificar que está funcionando:**
-   ```bash
-   docker logs mcp-github-audit
-   curl http://localhost:3001/health
-   ```
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `MCP_COMMAND` | No | `npx` | Executable to launch |
+| `MCP_ARGS` | **Yes** | — | Space-separated arguments passed to `MCP_COMMAND` |
+| `API_TOKEN` | No | — | Bearer token for auth. If unset, auth is disabled (dev only) |
+| `CORS_ORIGINS` | No | `http://localhost:3000,http://localhost:3001` | Comma-separated list of allowed origins |
+| `PORT` | No | `3001` | Port the gateway listens on |
 
-## ⚙️ Configuración
+Any additional variable defined in `.env` is automatically forwarded to the MCP child process via `...process.env`.
 
-El servidor MCP a ejecutar se configura con dos variables de entorno:
-
-- `MCP_COMMAND`: el ejecutable a lanzar (por defecto `npx`).
-- `MCP_ARGS`: los argumentos, separados por espacios, que se pasan a ese ejecutable.
-
-Cualquier otra variable de entorno necesaria para el servidor MCP elegido (tokens, rutas, etc.) se define también en `.env` y se propaga automáticamente al proceso hijo vía `...process.env`.
-
-### Ejemplo — GitHub MCP server
+### Example — GitHub MCP server
 
 ```env
 MCP_COMMAND=npx
 MCP_ARGS=-y @modelcontextprotocol/server-github
-GITHUB_PERSONAL_ACCESS_TOKEN=your_github_pat_here
+GITHUB_PERSONAL_ACCESS_TOKEN=ghp_xxxxxxxxxxxx
+API_TOKEN=your_secure_token   # openssl rand -hex 32
 ```
 
-### Ejemplo — Filesystem MCP server
+### Example — Filesystem MCP server
 
 ```env
 MCP_COMMAND=npx
-MCP_ARGS=-y @modelcontextprotocol/server-filesystem /path/to/dir
+MCP_ARGS=-y @modelcontextprotocol/server-filesystem /data
 ```
 
-Para usar cualquier otro servidor MCP compatible con stdio, basta con cambiar `MCP_COMMAND`/`MCP_ARGS` (y las credenciales que ese servidor necesite) — no hace falta tocar el código del gateway.
+## Endpoints
 
-## ❓ Why generic?
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/health` | No | Service status and active session count |
+| `GET` | `/sse` | Yes | Open an SSE stream and start an MCP process |
+| `POST` | `/messages` | Yes | Send a JSON-RPC message to an active session |
+| `GET` | `/sessions` | Yes | List active sessions |
+| `DELETE` | `/sessions/:id` | Yes | Terminate a session |
 
-El diseño anterior dependía de forma rígida de `@modelcontextprotocol/server-github`, un paquete concreto que puede quedar deprecado, dejar de recibir parches de seguridad o simplemente no ser el servidor que necesitas. Con `MCP_COMMAND`/`MCP_ARGS` el gateway se limita a hacer de puente HTTP/SSE ↔ stdio: puedes intercambiar el servidor MCP subyacente (GitHub, Filesystem, o cualquier otro) sin tocar `index.js`, sin reconstruir la imagen con un paquete distinto instalado globalmente y sin arrastrar dependencias de servidores MCP concretos en `package.json`.
+All authenticated endpoints require `Authorization: Bearer <API_TOKEN>`.
+If `API_TOKEN` is not set, authentication is skipped.
 
-## 🔌 Endpoints
+## Usage
 
-### `GET /health`
-Health check del servidor.
-
-**Respuesta:**
-```json
-{
-  "status": "ok",
-  "activeSessions": 0,
-  "uptime": 123.45
-}
-```
-
-### `GET /sse`
-Establece una conexión SSE y crea una sesión MCP, lanzando el proceso configurado en `MCP_COMMAND`/`MCP_ARGS`.
-
-**Respuesta:**
-- Header: `Content-Type: text/event-stream`
-- Primer evento: `{ "sessionId": "session-xxx" }`
-- Eventos subsecuentes: mensajes del servidor MCP
-
-**Ejemplo con curl:**
-```bash
-curl -N http://localhost:3001/sse
-```
-
-### `POST /messages`
-Envía un mensaje al servidor MCP de una sesión activa.
-
-**Headers requeridos:**
-- `x-session-id`: ID de sesión obtenido de `/sse`
-- `Content-Type: application/json`
-
-**Body:**
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "tools/call",
-  "params": {
-    "name": "get_file_contents",
-    "arguments": {
-      "owner": "octocat",
-      "repo": "Hello-World",
-      "path": "README.md"
-    }
-  },
-  "id": 1
-}
-```
-
-**Respuesta:**
-```json
-{
-  "status": "sent",
-  "sessionId": "session-xxx"
-}
-```
-
-### `GET /sessions`
-Lista todas las sesiones activas (útil para debugging).
-
-**Respuesta:**
-```json
-{
-  "count": 2,
-  "sessions": [
-    {
-      "sessionId": "session-xxx",
-      "pid": 123,
-      "createdAt": "2026-01-27T18:00:00.000Z",
-      "alive": true
-    }
-  ]
-}
-```
-
-### `DELETE /sessions/:sessionId`
-Cierra una sesión específica.
-
-**Respuesta:**
-```json
-{
-  "status": "deleted",
-  "sessionId": "session-xxx"
-}
-```
-
-## 📡 Acceso Público con Ngrok
-
-Ngrok expone automáticamente el servidor al internet:
-
-1. **Ver la URL pública:**
-   ```bash
-   curl http://localhost:4040/api/tunnels
-   ```
-
-2. **O accede a la interfaz web:**
-   ```
-   http://localhost:4040
-   ```
-
-La URL pública tendrá el formato: `https://xxxx-xx-xx-xx-xx.ngrok-free.app`
-
-## 🧪 Ejemplo de Uso Completo
+### 1. Open an SSE connection
 
 ```bash
-# 1. Establecer conexión SSE
-curl -N http://localhost:3001/sse &
-# Captura el sessionId del primer evento
+curl -N -H "Authorization: Bearer $API_TOKEN" http://localhost:3001/sse
+# First event returns the session ID:
+# event: session
+# data: {"sessionId":"session-1234567890-abc123def"}
+```
 
-# 2. Enviar un mensaje al servidor MCP configurado
+### 2. Send a JSON-RPC message
+
+```bash
 curl -X POST http://localhost:3001/messages \
-  -H "x-session-id: session-xxx" \
+  -H "Authorization: Bearer $API_TOKEN" \
+  -H "x-session-id: session-1234567890-abc123def" \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
-    "method": "tools/call",
-    "params": {
-      "name": "search_repositories",
-      "arguments": {
-        "query": "language:javascript stars:>1000"
-      }
-    },
+    "method": "tools/list",
+    "params": {},
     "id": 1
   }'
-
-# 3. La respuesta llegará por el stream SSE
+# {"status":"sent","sessionId":"session-1234567890-abc123def"}
+# The MCP response arrives on the SSE stream.
 ```
 
-## 🐛 Debugging
+### Python client example
 
-### Ver logs en tiempo real:
-```bash
-docker-compose logs -f mcp-github
+```python
+import requests, json, sseclient  # pip install sseclient-py
+
+BASE = "http://localhost:3001"
+TOKEN = "your_api_token"
+HEADERS = {"Authorization": f"Bearer {TOKEN}"}
+
+r = requests.get(f"{BASE}/sse", headers=HEADERS, stream=True)
+client = sseclient.SSEClient(r)
+
+session_id = None
+for event in client.events():
+    if event.event == "session":
+        session_id = json.loads(event.data)["sessionId"]
+        break
+
+requests.post(
+    f"{BASE}/messages",
+    headers={**HEADERS, "x-session-id": session_id, "Content-Type": "application/json"},
+    json={"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 1}
+)
+
+for event in client.events():
+    print(json.loads(event.data))
 ```
 
-### Ver sesiones activas:
-```bash
-curl http://localhost:3001/sessions
-```
-
-### Reiniciar el servicio:
-```bash
-docker-compose restart mcp-github
-```
-
-### Reconstruir desde cero:
-```bash
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
-```
-
-## 🛠️ Herramientas MCP Disponibles
-
-Las herramientas disponibles dependen del servidor MCP configurado en `MCP_ARGS`. Por ejemplo, el servidor MCP de GitHub expone herramientas como:
-
-- `create_or_update_file` - Crear o actualizar archivos
-- `search_repositories` - Buscar repositorios
-- `create_repository` - Crear nuevo repositorio
-- `get_file_contents` - Obtener contenido de archivos
-- `push_files` - Subir múltiples archivos
-- `create_issue` - Crear issues
-- `create_pull_request` - Crear pull requests
-- `fork_repository` - Hacer fork de repos
-- `create_branch` - Crear ramas
-
-Mientras que el servidor MCP de Filesystem expone herramientas para leer/escribir archivos locales dentro del directorio configurado.
-
-Para más detalles sobre cada servidor, consulta: https://github.com/modelcontextprotocol/servers
-
-## 📊 Monitoreo
-
-### Health check automático:
-Docker Compose incluye health checks cada 30 segundos.
-
-### Logs estructurados:
-El servidor incluye emojis y prefijos para facilitar el debugging:
-- 🔌 Conexiones
-- 📨 Mensajes recibidos
-- 📤 Mensajes enviados
-- ⚠️ Advertencias
-- ❌ Errores
-- 🗑️ Limpiezas
-
-## 🔒 Seguridad
-
-- **No expongas** tus tokens/credenciales del servidor MCP en logs o código
-- Usa Ngrok solo para desarrollo/testing
-- Define `API_TOKEN` en producción para activar la autenticación de los endpoints (ver abajo)
-- Limita las sesiones simultáneas si es necesario
-
-### Autenticación
-
-Los endpoints `/sse`, `/messages`, `/sessions` y `DELETE /sessions/:sessionId` requieren un Bearer token en el header `Authorization`:
+## Development
 
 ```bash
-curl -H "Authorization: Bearer YOUR_API_TOKEN" http://localhost:3001/messages
+npm install
+npm run dev          # node --watch index.js
+npm test             # Jest + supertest
+npm run test:coverage
 ```
 
-Genera un token seguro:
+### Run with ngrok (public exposure)
+
 ```bash
-openssl rand -hex 32
+# Requires NGROK_AUTHTOKEN in .env
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Inspect tunnel URL at http://localhost:4040
 ```
 
-Nota: Si `API_TOKEN` no está definida en `.env`, la autenticación está deshabilitada (modo desarrollo).
+## Security
 
-### CORS
+- Set `API_TOKEN` in production. Generate with `openssl rand -hex 32`.
+- Set `CORS_ORIGINS` to the exact origins your client runs on.
+- The container runs as the built-in `node` user (uid 1000), not root.
+- Use ngrok only for development and testing — never as production infrastructure.
 
-Los endpoints están protegidos contra orígenes no autorizados. Orígenes permitidos:
-- `http://localhost:3001` (desarrollo local)
-- `http://localhost:3000` (frontend local alternativo)
-- `https://ebautomationai.github.io` (GitHub Pages)
+## Key design decisions
 
-Cualquier otro origen recibirá un error CORS. Para agregar más orígenes en desarrollo, modifica `corsOptions.allowedOrigins` en `index.js`.
+**`MCP_COMMAND`/`MCP_ARGS` pattern** — The gateway launches the MCP process via `spawn()` using only environment variables. This keeps the gateway server-agnostic: switching from the GitHub server to the Filesystem server (or any other stdio-compatible MCP server) requires no code change and no image rebuild.
 
-### Pruebas
+**No MCP SDK dependency** — The gateway communicates with the MCP process over stdio using newline-delimited JSON, which is all the MCP stdio transport requires. The `@modelcontextprotocol/sdk` package adds no value here and was removed.
 
-Ejecutar tests:
+**ngrok in a separate Compose file** — `docker-compose.yml` is safe to run in any environment. Ngrok, which opens a public internet tunnel, is opt-in via `docker-compose.dev.yml`.
+
+**Non-root container** — The Dockerfile installs dependencies as root, transfers ownership with `chown -R node:node /app`, then switches to the built-in `node` user before `CMD`. This avoids `npm ci` permission errors while still running the process as non-root.
+
+## Troubleshooting
+
+**Container does not start**
 ```bash
-npm test           # Una vez
-npm run test:watch # En modo vigilancia
-npm run test:coverage # Con reporte de cobertura
+docker compose logs mcp-github
+docker compose down && docker compose up -d --build
 ```
 
-Tests cubren:
-- Autenticación: tokens válidos, faltantes e inválidos
-- CORS: orígenes permitidos y bloqueados
+**`MCP_ARGS not set` error**
+`MCP_ARGS` is required. Set it in `.env` before starting.
 
-### CI/CD
+**Port 3001 already in use**
+Set `PORT=3002` in `.env` and update the port mapping in `docker-compose.yml`.
 
-Cada push a `main` o pull request ejecuta automáticamente:
-- Tests en Node.js 18.x, 20.x, 22.x (GitHub Actions)
-- Reporte de cobertura
-- Verificación de sintaxis
+**Ngrok tunnel not connecting**
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml logs ngrok-mcp
+```
 
-Ver estado en: https://github.com/ebAutomationAi/MCP-Gateway/actions
+## CI
 
-## 🤝 Contribuir
+Tests run on Node.js 18, 20, and 22 on every push and pull request to `main`.
 
-Si encuentras bugs o mejoras, crea un issue o pull request.
-
-## 📄 Licencia
+## License
 
 MIT
