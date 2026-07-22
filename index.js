@@ -34,11 +34,8 @@ const authenticateToken = (req, res, next) => {
 
 const corsOptions = {
   origin: (origin, callback) => {
-    const allowedOrigins = [
-      'http://localhost:3001',
-      'http://localhost:3000',
-      'https://ebautomationai.github.io'
-    ];
+    const rawOrigins = process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:3001';
+    const allowedOrigins = rawOrigins.split(',').map(o => o.trim()).filter(Boolean);
 
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
