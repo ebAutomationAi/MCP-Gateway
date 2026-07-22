@@ -3,19 +3,19 @@
 services:
   ngrok-mcp:
     image: ngrok/ngrok:3
-    container_name: ngrok-mcp-audit
+    container_name: mcp-gateway-ngrok
     environment:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
-    command: ["http", "mcp-github:3001"]
+    command: ["http", "mcp-gateway:3001"]
     ports:
       - "4040:4040"
     networks:
-      - audit-net
+      - gateway-net
     depends_on:
-      mcp-github:
+      mcp-gateway:
         condition: service_healthy
     restart: "no"
 
 networks:
-  audit-net:
+  gateway-net:
     external: true
